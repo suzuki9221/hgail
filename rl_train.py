@@ -153,8 +153,6 @@ def env_eval_maker(env_id, config, obs_configs, env_wrapper_configs, rendering=T
 
 
 if __name__ == '__main__':
-    start = time.time()
-    print(start)
     # obs_configsに環境の設定を格納
     generate_rgb = FAKE_BIRDVIEW or RGB_GAIL
     obs_configs = get_obs_configs(generate_rgb)
@@ -265,10 +263,5 @@ if __name__ == '__main__':
         log_file.write(wandb.run.path)
     # 訓練を開始する
     # agent.learn(total_timesteps=1e8, callback=callback)
-    agent.learn(total_timesteps=1e7, callback=callback)
+    agent.learn(total_timesteps=5e6, callback=callback)
 
-    elapsed_time = time.time() - start
-    # 時間形式に変換
-    hours, rem = divmod(elapsed_time, 3600)
-    minutes, seconds = divmod(rem, 60)
-    print(f"経過時間: {int(hours)}時間 {int(minutes)}分 {seconds:.2f}秒")

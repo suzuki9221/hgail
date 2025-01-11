@@ -54,7 +54,7 @@ multi_env_configs = [
     {"host": "192.168.0.236", "port": 2000, 'carla_map': 'Town01'},
     {"host": "192.168.0.236", "port": 2002, 'carla_map': 'Town01'},
     {"host": "192.168.0.236", "port": 2004, 'carla_map': 'Town01'},
-#    {"host": "192.168.0.236", "port": 2006, 'carla_map': 'Town01'},
+    {"host": "192.168.0.236", "port": 2006, 'carla_map': 'Town01'},
 #    {"host": "192.168.0.236", "port": 2008, 'carla_map': 'Town01'},
 #    {"host": "192.168.0.236", "port": 2010, 'carla_map': 'Town01'},
 ]
@@ -187,7 +187,7 @@ if __name__ == '__main__':
     discriminator_kwargs = {
         'observation_space': env.observation_space,
         'action_space': env.action_space,
-        'batch_size': 256,# 256(original)
+        'batch_size': 256,
         'disc_head_arch': [256, 256],
         'rgb_gail': RGB_GAIL,
         'traj_plot': TRAJ_PLOT
@@ -202,15 +202,14 @@ if __name__ == '__main__':
 
     #強化学習のパラメーターの設定
     train_kwargs = {
-        'initial_learning_rate': 2e-5,
+        'initial_actor_lr': 2e-5,
+        'initial_critic_lr': 2e-5,
         'gail': GAIL,
         'n_steps_total': 12288,
         'batch_size': 256,
         'n_epochs': 20, 
         'gamma': 0.99,
         'gae_lambda': 0.9,
-        'clip_range': 0.2,
-        'clip_range_vf': 0.2,
         'ent_coef': 0.01,
         'explore_coef': 0.05,
         'vf_coef': 0.5,
@@ -219,8 +218,11 @@ if __name__ == '__main__':
         'use_exponential_lr_decay': True,
         'gail_gamma': 0.004,
         'gail_gamma_decay': 1.0,
-        'update_adv': False,
-    }
+        'tau': 0.005,  # SACのターゲットネットワーク更新のためのτ
+        'alpha': 0.2,  # SACのentropy係数
+        'target_entropy': -env.action_space.shape[0],
+        'buffer_size':1000000,
+    }’
 
     # 訓練を再開する設定
     if RESUME_LAST_TRAIN:
@@ -247,7 +249,7 @@ if __name__ == '__main__':
         discriminator = Discriminator(**discriminator_kwargs)
         if FAKE_BIRDVIEW:
             policy.gan_fake_birdview.pretrain()
-
+    # SACエージェントを作成する
     agent = SAC(
         policy=policy,
         discriminator=discriminator,
@@ -261,4 +263,4 @@ if __name__ == '__main__':
     with open(last_checkpoint_path, 'w') as log_file:
         log_file.write(wandb.run.path)
     # 訓練を開始する
-    agent.learn(total_timesteps=1e7, callback=callback)
+    agent.learn(total_timesteps=5e6, callback=callback)

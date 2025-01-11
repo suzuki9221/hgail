@@ -74,6 +74,7 @@ class PpoPolicy(nn.Module):
         if self.fake_birdview:
             self.gan_fake_birdview = GanFakeBirdview(gan_batches_done, traj_plot)
             
+    # ノイズのリセットをする
     def reset_noise(self, n_envs: int = 1) -> None:
         assert self.use_sde, 'reset_noise() is only available when using gSDE'
         self.action_dist.sample_weights(self.dist_sigma, batch_size=n_envs)
@@ -118,6 +119,7 @@ class PpoPolicy(nn.Module):
 
         self.optimizer = self.optimizer_class(self.parameters(), **self.optimizer_kwargs)
 
+    # 特徴抽出をする関数
     def _get_features(self, obs_dict, fake_birdview=None) -> th.Tensor:
         """
         :param birdview: th.Tensor (num_envs, frame_stack*channel, height, width)
@@ -167,6 +169,7 @@ class PpoPolicy(nn.Module):
 
         return features, fake_birdview
 
+    # 特徴から行動分布,平均(mu)と標準偏差(sigma)のパラメータを返す
     def _get_action_dist_from_features(self, features: th.Tensor):
         latent_pi = self.policy_head(features)
         mu = self.dist_mu(latent_pi)
@@ -176,6 +179,7 @@ class PpoPolicy(nn.Module):
             sigma = self.dist_sigma(latent_pi)
         return self.action_dist.proba_distribution(mu, sigma), mu.detach().cpu().numpy(), sigma.detach().cpu().numpy()
 
+    #　与えられた行動の評価を行う
     def evaluate_actions(self, obs_dict: Dict[str, th.Tensor], actions: th.Tensor, exploration_suggests, fake_birdview=None,
                          detach_values=False):
         features, _ = self._get_features(obs_dict, fake_birdview)
@@ -192,6 +196,7 @@ class PpoPolicy(nn.Module):
         return values.flatten(), log_prob, distribution.entropy_loss(), \
             distribution.exploration_loss(exploration_suggests), distribution.distribution
 
+    # 行動の対数確率とエントロピー損失を計算
     def evaluate_actions_bc(self, obs_dict: Dict[str, th.Tensor], fake_birdview, actions: th.Tensor):
         features, _ = self._get_features(obs_dict, fake_birdview)
 
@@ -200,6 +205,7 @@ class PpoPolicy(nn.Module):
         log_prob = distribution.log_prob(actions)
         return log_prob, distribution.entropy_loss()
 
+    # 状態価値を評価する関数
     def evaluate_values(self, obs_dict: Dict[str, th.Tensor]):
         features, _ = self._get_features(obs_dict)
         values = self.value_head(features)
@@ -228,6 +234,7 @@ class PpoPolicy(nn.Module):
         fake_birdview = fake_birdview.cpu().numpy()
         return actions, values, log_prob, mu, sigma, features, fake_birdview
 
+    # 状態の価値を返す
     def forward_value(self, obs_dict: Dict[str, np.ndarray]) -> np.ndarray:
         with th.no_grad():
             obs_tensor_dict = dict([(k, th.as_tensor(v).to(self.device)) for k, v in obs_dict.items()])
@@ -236,6 +243,7 @@ class PpoPolicy(nn.Module):
         values = values.cpu().numpy().flatten()
         return values
 
+    # 行動分布のパラメーターを返す
     def forward_policy(self, obs_dict: Dict[str, np.ndarray]) -> np.ndarray:
         with th.no_grad():
             obs_tensor_dict = dict([(k, th.as_tensor(v).to(self.device)) for k, v in obs_dict.items()])
@@ -243,6 +251,7 @@ class PpoPolicy(nn.Module):
             distribution, mu, sigma = self._get_action_dist_from_features(features)
         return mu, sigma
 
+    # 行動を正規化する（行動空間ー＞モデルの内部表現）
     def scale_action(self, action: th.Tensor, eps=1e-7) -> th.Tensor:
         # input action \in [a_low, a_high]
         # output action \in [d_low+eps, d_high-eps]
@@ -255,6 +264,7 @@ class PpoPolicy(nn.Module):
             action = th.clamp(action, d_low+eps, d_high-eps)
         return action
 
+    # 行動を非正規化する（モデルの内部表現ー＞行動空間）
     def unscale_action(self, action: np.ndarray, eps=0.0) -> np.ndarray:
         # input action \in [d_low, d_high]
         # output action \in [a_low+eps, a_high-eps]
@@ -269,6 +279,7 @@ class PpoPolicy(nn.Module):
             # action = np.clip(action, a_low+eps, a_high-eps)
         return action
 
+    # モデルの初期パラメータを取得
     def get_init_kwargs(self) -> Dict[str, Any]:
         if self.fake_birdview:
             gan_batches_done=self.gan_fake_birdview.batches_done
@@ -291,6 +302,7 @@ class PpoPolicy(nn.Module):
         )
         return init_kwargs
 
+    # 保存されたモデルを読み込む
     @classmethod
     def load(cls, path):
         if th.cuda.is_available():
@@ -305,6 +317,7 @@ class PpoPolicy(nn.Module):
         model.to(device)
         return model, saved_variables['train_init_kwargs']
 
+    # ネットワークの重みを初期化
     @staticmethod
     def init_weights(module: nn.Module, gain: float = 1) -> None:
         """

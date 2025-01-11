@@ -30,7 +30,7 @@ terminal_configs = {
 }
 
 env_configs = {
-    'carla_map': 'Town01',
+    'carla_map': 'Town02',
     'weather_group': 'train',
     'routes_group': 'train'
 }
@@ -272,7 +272,7 @@ def evaluate_agent(ckpt_path):
 
     routes_completed = []
     fixed_camera = Camera(env._world, image_size, image_size, 90, fixed_camera_x, fixed_camera_y, camera_z, -90, 0)
-    for route_id in tqdm.tqdm(range(48)):
+    for route_id in tqdm.tqdm(range(50)):
         episode_dir = eval_file_dir / ('route_%02d' % route_id)
         (episode_dir / 'birdview').mkdir(parents=True)
         (episode_dir / 'fake_birdview').mkdir(parents=True)
@@ -405,5 +405,5 @@ if __name__ == '__main__':
     # for _ in range(12):
     #     evaluate_agent(ckpt_list[ckpt_idx])
     #     ckpt_idx += 4
-    ckpt_file = pathlib.Path('/home/suzuki/hgail-main/並列数４/ckpt/ckpt_1179648.pth')
+    ckpt_file = pathlib.Path('/home/suzuki/hgail-main/並列数４/ckpt/ckpt_1302528.pth')
     evaluate_agent(ckpt_file)

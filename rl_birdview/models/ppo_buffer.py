@@ -10,6 +10,7 @@ import time
 from threading import Thread
 import queue
 
+"""
 COLORS = [
     [46, 52, 54],
     [136, 138, 133],
@@ -19,7 +20,7 @@ COLORS = [
     [255, 0, 0],
     [255, 255, 0],
     [255, 255, 255]
-]
+]"""
 
 
 class PpoBufferSamples(NamedTuple):
@@ -27,9 +28,9 @@ class PpoBufferSamples(NamedTuple):
     actions: th.Tensor
     old_values: th.Tensor
     old_log_prob: th.Tensor
-    old_mu: th.Tensor
-    old_sigma: th.Tensor
-    advantages: th.Tensor
+    old_mu: th.Tensor # 古い確率分布を生成するため
+    old_sigma: th.Tensor # 古い確率分布を生成するため
+    advantages: th.Tensor # アドバンテージ関数
     returns: th.Tensor
     fake_birdviews: th.Tensor
     exploration_suggests: List[tuple]
@@ -252,6 +253,7 @@ class PpoBuffer():
         thread1 = Thread(target=self.cache_to_cuda, args=(batch_size,))
         thread1.start()
 
+    
     def cache_to_cuda(self, batch_size):
         self.sample_queue.queue.clear()
 

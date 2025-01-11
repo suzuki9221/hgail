@@ -170,6 +170,7 @@ class PPO():
 
     def train(self):
         for param_group in self.policy.optimizer.param_groups:
+            # 学習率を更新
             param_group["lr"] = self.learning_rate
 
         entropy_losses, exploration_losses, pg_losses, bc_losses, value_losses, losses = [], [], [], [], [], []
@@ -178,12 +179,17 @@ class PPO():
 
         # train for gradient_steps epochs
         epoch = 0
+        # 更新回数を計算
         data_len = int(self.buffer.buffer_size * self.buffer.n_envs / self.batch_size)
+
+        # fake_birdview が有効化されている場合、GANによる疑似バードビュー生成を行う
         if self.policy.fake_birdview:
             data_loader_fake_birdview = self.policy.gan_fake_birdview.fill_expert_dataset(self.discriminator.expert_loader)
+
         for epoch in range(self.n_epochs):
             approx_kl_divs = []
             # Do a complete pass on the rollout buffer
+            # バッファからのデータを取得
             self.buffer.start_caching(self.batch_size)
             # while self.buffer.sample_queue.qsize() < 3:
                 # time.sleep(0.01)
@@ -195,6 +201,7 @@ class PPO():
                         time.sleep(0.01)
                 rollout_data = self.buffer.sample_queue.get()
 
+                # 方策を用いて①状態の価値②行動の確率の対数③エントロピー損失④探索損失⑤行動の確率分布を計算する
                 values, log_prob, entropy_loss, exploration_loss, distribution = self.policy.evaluate_actions(
                     rollout_data.observations, rollout_data.actions, rollout_data.exploration_suggests, rollout_data.fake_birdviews,
                     detach_values=False)
@@ -203,11 +210,15 @@ class PPO():
                 # advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
                 # ratio between old and new policy, should be one at the first iteration
+                # 新しいポリシーの確率と古いポリシーの確率の比
                 ratio = th.exp(log_prob - rollout_data.old_log_prob)
 
                 # clipped surrogate loss
+                # 新しいポリシーに基づく損失
                 policy_loss_1 = advantages * ratio
+                # 確率比をクリップした損失
                 policy_loss_2 = advantages * th.clamp(ratio, 1 - self.clip_range, 1 + self.clip_range)
+                # 2つの損失の最小値を採用
                 policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
 
                 # Logging
@@ -215,6 +226,7 @@ class PPO():
                 clip_fractions.append(clip_fraction)
 
                 # Expert dataset
+                # 専門家データからBC損失（専門家の損失）を計算する
                 for expert_batch in self.discriminator.expert_loader:
                     expert_obs_dict, expert_action = expert_batch
                     obs_tensor_dict = dict([(obs_key, obs_item.float().to(self.policy.device)) for obs_key, obs_item in expert_obs_dict.items()])
@@ -237,14 +249,19 @@ class PPO():
                 else:
                     # Clip the different between old and new value
                     # NOTE: this depends on the reward scaling
+                    # クリッピング後の新しい価値関数の予測値
                     values_pred = rollout_data.old_values + th.clamp(values - rollout_data.old_values,
                                                                      -self.clip_range_vf, self.clip_range_vf)
                 # Value loss using the TD(gae_lambda) target
+
+                # 価値観数の損失の計算
                 value_loss = F.mse_loss(rollout_data.returns, values_pred)
 
+                # 損失の合計
                 loss = action_loss + self.vf_coef * value_loss \
                     + self.ent_coef * entropy_loss + self.explore_coef * exploration_loss
 
+                # 計算された損失をログに記録
                 losses.append(loss.item())
                 pg_losses.append(policy_loss.item())
                 bc_losses.append(bcloss.item())
@@ -253,25 +270,33 @@ class PPO():
                 exploration_losses.append(exploration_loss.item())
 
                 # Optimization step
+                # 勾配を計算する前に以前の勾配をリセット
                 self.policy.optimizer.zero_grad()
+                # loss（全体の損失）に基づいて、各パラメータの勾配が計算
                 loss.backward()
                 # Clip grad norm
+                # 勾配爆発（gradient explosion）を防ぐために、勾配のノルム（大きさ）を制限
                 th.nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                # パラメータの更新
                 self.policy.optimizer.step()
 
                 with th.no_grad():
+                    # 古いポリシーの確率分布
                     old_distribution = self.policy.action_dist.proba_distribution(
                         rollout_data.old_mu, rollout_data.old_sigma)
+                    # KLダイバージェンス(古いポリシーの分布と現在のポリシーの分布)の計算
                     kl_div = th.distributions.kl_divergence(old_distribution.distribution, distribution)
 
                 approx_kl_divs.append(kl_div.mean().item())
 
             # update advantages
+            # アドバンテージの更新
             if self.update_adv:
                 self.buffer.update_values(self.policy)
                 last_values = self.policy.forward_value(self._last_obs)
                 self.buffer.compute_returns_and_advantage(last_values, dones=self._last_dones)
 
+        # ログのための計算（予測と実際の値の差異が、実際の値の分散に対してどの程度小さいかを示す指標）
         explained_var = explained_variance(self.buffer.returns.flatten(), self.buffer.values.flatten())
 
         if self.use_exponential_lr_decay:
@@ -280,7 +305,7 @@ class PPO():
         if self.gail_gamma is not None:
             self.gail_gamma *= self.gail_gamma_decay
 
-        # Logs
+        # ログの更新
         self.train_debug.update({
             "train/entropy_loss": np.mean(entropy_losses),
             "train/exploration_loss": np.mean(exploration_losses),
@@ -317,42 +342,60 @@ class PPO():
             "train_gan/gan_loss": np.mean(gan_losses)
         })
     
+    #学習を進める関数
     def learn(self, total_timesteps, callback=None, seed=2021):
         # reset env seed
+        # 環境の乱数シード値を設定
         self.env.action_space.seed(seed)
         self.env.observation_space.seed(seed)
         self.env.seed(seed)
 
+        # ログの記録用に学習開始時刻を取得
         self.start_time = time.time()
 
+        # 意味のない変数
         self.t_train_values = 0.0
 
+        
+        # 各環境をリセットし、初期の状態を取得
         self._last_obs = self.env.reset()
+        # 並列環境の終了条件を全てFalseに初期化
         self._last_dones = np.zeros((self.env.num_envs,), dtype=np.bool_)
 
+        #　コールバックの初期化
         callback.init_callback(self)
 
+        #　コールバックを使用して学習開始の処理をする（ログの記録や初期設定）
         callback.on_training_start(locals(), globals())
 
         while self.num_timesteps < total_timesteps:
             self.ep_stat_buffer = []
             self.route_completion_buffer = []
             callback.on_rollout_start()
+            # 現在の時間を取得
             t0 = time.time()
+            # 方策学習
             self.policy = self.policy.train()
+            # 環境からデータを収集
             continue_training = self.collect_rollouts(self.env, callback, self.buffer, self.n_steps)
+            # データ収集にかかった時間を計測
             self.t_rollout = time.time() - t0
             callback.on_rollout_end()
 
             if continue_training is False:
                 break
 
+            # 現在の時間を取得
             t0 = time.time()
+            # 学習を行う
             self.train()
+            # GANの学習を行う
             if self.policy.fake_birdview and self.num_timesteps < 405504:
                 self.train_gan()
+            # 学習時間を計測
             self.t_train = time.time() - t0
             callback.on_training_end()
+            # 更新回数を更新
             self.i_update += 1
 
         return self
@@ -382,6 +425,7 @@ class PPO():
         )
         return init_kwargs
 
+    # モデルを保存
     def save(self, path: str) -> None:
         th.save({'policy_state_dict': self.policy.state_dict(),
                  'discriminator_state_dict': self.discriminator.state_dict(),
